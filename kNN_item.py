@@ -17,22 +17,28 @@ start_time = time.time()
 
 
 #Dataset
-PERCENT_TRAIN = 80
-dat_file='ratings.csv'
+dat_file='ratings_item.csv'
 
 data = Data()
 data.load(dat_file, sep=',', format={'col':0, 'row':1, 'value':2})
-train, test = data.split_train_test(percent=PERCENT_TRAIN)
+train, test = data.split_train_test(percent=80)
+print train
+print test
 
 ################ kNN ################
 train_item = {}
+train_user = {}
 for rating, item_id, user_id in train:
     if item_id in train_item:
         train_item[item_id][user_id] = rating
     else:
         train_item[item_id] = {user_id: rating}
+    if user_id in train_user:
+        train_user[user_id][item_id] = rating
+    else:
+        train_user[user_id] = {item_id: rating}
 
-print train_item.keys()
+
 # Pearson correlation
 def similarity(item1, item2):
     users = list(set(train_item[item1].keys()).intersection(train_item[item2].keys()))
@@ -40,10 +46,7 @@ def similarity(item1, item2):
     s2 = 0
     s3 = 0
     for user in users:
-        user_history = []
-        for item in train_item.keys():
-            if user in train_item[item].keys():
-                user_history.append(train_item[item][user])
+        user_history = train_user[user].values()
         mean = statistics.mean(user_history)
         s1 += (train_item[item1][user]-mean)*(train_item[item2][user]-mean)
         s2 += math.pow((train_item[item1][user]-mean), 2)
@@ -56,29 +59,41 @@ def similarity(item1, item2):
 
 # Evaluate
 rmse = RMSE()
-dist = {}
+
+k = 6
 i = 0
 for rating, item_id, user_id in test:
     print "==========================================="
-    i += 1
+    #if i == 5:
+        #break
     try:
-        for item in train_item.keys():
-            sim = similarity(item_id, item)
-            # 3NN
-            if len(dist) < 3:
-                dist[item] = sim
-            mindist = min(dist, key=dist.get)
-            if dist[mindist] < sim:
-                del dist[mindist]
-                dist[item] = sim
-            print i
+        print i
+        i += 1
+        if user_id not in train_user.keys():
+            pred_rating = statistics.mean(train_user[item_id].values())
+        else:
+            dist = {}
+            for item in train_user[user_id].keys():
+                sim = similarity(item_id, item)
+                # 3NN
+                if len(dist) < k:
+                    dist[item] = sim
+                mindist = min(dist, key=dist.get)
+                if dist[mindist] < sim:
+                    del dist[mindist]
+                    dist[item] = sim
             print dist
-        ratings = []
-        for item in dist.keys():
-            for value in train_item[item].values():
-                ratings.append(value)
+            ratings = []
+            for item in dist.keys():
+                ratings.append(train_user[user_id][item])
 
-        pred_rating = statistics.mean(ratings)
+            pred_rating = statistics.mean(ratings)
+            if len(dist) < k:
+                pred_rating = statistics.mean(train_user[item_id].values())
+            else:
+                pred_rating = statistics.mean(ratings)
+
+        print pred_rating
         rmse.add(rating, pred_rating)
     except KeyError:
         continue
